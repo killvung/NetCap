@@ -2,10 +2,53 @@ import datetime
 import logging
 from dataclasses import dataclass
 from scapy.all import sniff, Ether, IP, TCP, UDP
+import sqlite3
 
 # Configure logging
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 logger = logging.getLogger()
+
+# Initialize SQLite database
+conn = sqlite3.connect('packets.db')
+cursor = conn.cursor()
+
+# Create table for storing packets
+cursor.execute('''
+CREATE TABLE IF NOT EXISTS packets (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    destination_mac TEXT,
+    source_mac TEXT,
+    ethertype INTEGER,
+    version INTEGER,
+    ihl INTEGER,
+    dscp INTEGER,
+    ecn INTEGER,
+    total_length INTEGER,
+    identification INTEGER,
+    flags INTEGER,
+    fragment_offset INTEGER,
+    ttl INTEGER,
+    protocol INTEGER,
+    header_checksum INTEGER,
+    source_ip TEXT,
+    destination_ip TEXT,
+    source_port INTEGER,
+    destination_port INTEGER,
+    sequence_number INTEGER,
+    acknowledgment_number INTEGER,
+    tcp_data_offset INTEGER,
+    tcp_reserved INTEGER,
+    tcp_flags INTEGER,
+    window_size INTEGER,
+    tcp_checksum INTEGER,
+    urgent_pointer INTEGER,
+    udp_length INTEGER,
+    udp_checksum INTEGER,
+    payload BLOB,
+    timestamp TEXT
+)
+''')
+conn.commit()
 
 @dataclass
 class EthernetFrame:
@@ -127,7 +170,7 @@ def packet_callback(packet):
                 ecn=packet[IP].tos & 0x03,
                 total_length=packet[IP].len,
                 identification=packet[IP].id,
-                flags=packet[IP].flags,
+                flags=int(packet[IP].flags),
                 fragment_offset=packet[IP].frag,
                 ttl=packet[IP].ttl,
                 protocol=packet[IP].proto,
@@ -148,7 +191,7 @@ def packet_callback(packet):
                 acknowledgment_number=packet[TCP].ack,
                 data_offset=packet[TCP].dataofs,
                 reserved=packet[TCP].reserved,
-                flags=packet[TCP].flags,
+                flags=int(packet[TCP].flags),
                 window_size=packet[TCP].window,
                 checksum=packet[TCP].chksum,
                 urgent_pointer=packet[TCP].urgptr
@@ -168,6 +211,37 @@ def packet_callback(packet):
 
         captured_packet = Packet(eth_frame, ip_header, transport_header, payload)
         logger.info(f"Captured packet:\n{captured_packet}")
+
+        # Insert packet data into SQLite database
+        cursor.execute('''
+        INSERT INTO packets (
+            destination_mac, source_mac, ethertype, version, ihl, dscp, ecn, total_length,
+            identification, flags, fragment_offset, ttl, protocol, header_checksum, source_ip,
+            destination_ip, source_port, destination_port, sequence_number, acknowledgment_number,
+            tcp_data_offset, tcp_reserved, tcp_flags, window_size, tcp_checksum, urgent_pointer,
+            udp_length, udp_checksum, payload, timestamp
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        ''', (
+            eth_frame.destination_mac, eth_frame.source_mac, eth_frame.ethertype,
+            ip_header.version, ip_header.ihl, ip_header.dscp, ip_header.ecn, ip_header.total_length,
+            ip_header.identification, ip_header.flags, ip_header.fragment_offset, ip_header.ttl,
+            ip_header.protocol, ip_header.header_checksum, ip_header.source_ip, ip_header.destination_ip,
+            transport_header.source_port if transport_header else None,
+            transport_header.destination_port if transport_header else None,
+            transport_header.sequence_number if isinstance(transport_header, TCPHeader) else None,
+            transport_header.acknowledgment_number if isinstance(transport_header, TCPHeader) else None,
+            transport_header.data_offset if isinstance(transport_header, TCPHeader) else None,
+            transport_header.reserved if isinstance(transport_header, TCPHeader) else None,
+            transport_header.flags if isinstance(transport_header, TCPHeader) else None,
+            transport_header.window_size if isinstance(transport_header, TCPHeader) else None,
+            transport_header.checksum if isinstance(transport_header, TCPHeader) else None,
+            transport_header.urgent_pointer if isinstance(transport_header, TCPHeader) else None,
+            transport_header.length if isinstance(transport_header, UDPHeader) else None,
+            transport_header.checksum if isinstance(transport_header, UDPHeader) else None,
+            payload,  # This corresponds to the `payload` column
+            captured_packet.timestamp.isoformat()  # This corresponds to the `timestamp` column
+        ))
+        conn.commit()
     except Exception as e:
         logger.error(f"Error processing packet: {e}")
 
