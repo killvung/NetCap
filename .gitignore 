@@ -1,0 +1,37 @@
+# Byte-compiled / optimized / DLL files
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Scapy specific
+*.pcap
+*.cap
+*.dump
+
+# Log files
+*.log
+
+# Virtual environment
+venv/
+.virtualenv/
+*.venv
+
+# Python cache
+*.pyc
+*.pyo
+*.pyd
+
+# Jupyter Notebook
+.ipynb_checkpoints/
+
+# IDE and editor files
+*.swp
+*.swo
+*.swn
+*.bak
+*.tmp
+*.~*
+
+# OS generated files
+.DS_Store
+Thumbs.db
